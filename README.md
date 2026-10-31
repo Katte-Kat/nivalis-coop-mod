@@ -45,3 +45,7 @@ export NIVALIS_GAME_DIR="/path/to/Nivalis Nights"
 `NivalisCoop.Net` is the protocol client (no game dependencies); `NivalisCoop.NetTest` is an end-to-end test that
 needs a running server: `dotnet run --project NivalisCoop.NetTest -- 127.0.0.1 27800`.
 `tools/InteropDump` lists types and members of the generated interop assemblies, handy for new patches.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
