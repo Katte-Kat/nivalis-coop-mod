@@ -44,6 +44,8 @@ namespace NivalisCoop.Plugin
             MainMenuHook.Tick();
             ServerWorld.Tick();
             MoneySync.Tick(client);
+            ObjectSync.Tick(client);
+            RemoteAvatars.Tick(client);
             if (client.State == ClientState.Connected && LocalPose.TryGet(out var pose))
             {
                 if (!_loggedFirstPose)
@@ -187,6 +189,7 @@ namespace NivalisCoop.Plugin
                 Plugin.SyncMoney.Value = GUILayout.Toggle(Plugin.SyncMoney.Value, "Shared money (all players use one account)");
                 if (MoneySync.Line.Length > 0) GUILayout.Label(MoneySync.Line);
                 if (WorldTime.Line.Length > 0) GUILayout.Label(WorldTime.Line);
+                if (ObjectSync.Line.Length > 0) GUILayout.Label(ObjectSync.Line);
                 DrawServerWorld(client);
                 GUILayout.Space(4);
                 GUILayout.Label("Chat (click the line, type, Enter sends):");

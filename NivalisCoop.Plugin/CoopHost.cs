@@ -103,6 +103,7 @@ namespace NivalisCoop.Plugin
             MoneySync.OnEvent(ev);
             DialogueSharing.OnEvent(ev);
             WorldTime.OnEvent(ev);
+            ObjectSync.OnEvent(ev);
             switch (ev)
             {
                 case PlayerJoined j:
