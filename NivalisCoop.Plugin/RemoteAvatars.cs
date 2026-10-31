@@ -11,7 +11,7 @@ namespace NivalisCoop.Plugin
     /// </summary>
     internal static class RemoteAvatars
     {
-        sealed class Avatar { public GameObject Root; public Renderer[] Renders; }
+        sealed class Avatar { public GameObject Root; public Renderer[] Renders; public bool Logged; public float BuiltAt; }
         static readonly Dictionary<int, Avatar> _avatars = new Dictionary<int, Avatar>();
         static Material _material;
         static bool _materialTried;
@@ -41,6 +41,13 @@ namespace NivalisCoop.Plugin
                 // the pose is the player's camera, about 1.6 m above the feet
                 avatar.Root.transform.position = new Vector3(pose.X, pose.Y - 1.6f, pose.Z);
                 avatar.Root.transform.rotation = Quaternion.Euler(0, pose.Ry, 0);
+                if (!avatar.Logged && Time.realtimeSinceStartup > avatar.BuiltAt + 1.5f)
+                {
+                    avatar.Logged = true;
+                    var r = avatar.Renders[0];
+                    var cam = Camera.main;
+                    Plugin.Logger.LogInfo($"avatar {player.Id} at {avatar.Root.transform.position}, layer {avatar.Root.layer}, cam mask {(cam != null ? cam.cullingMask : 0)}, shader {(r.sharedMaterial != null ? r.sharedMaterial.shader.name : "none")}, visible {r.isVisible}, enabled {r.enabled}");
+                }
             }
         }
 
@@ -52,7 +59,7 @@ namespace NivalisCoop.Plugin
             var head = Part(PrimitiveType.Sphere, root.transform, new Vector3(0, 1.62f, 0), new Vector3(0.32f, 0.32f, 0.32f), color * 0.85f);
             var nose = Part(PrimitiveType.Cube, root.transform, new Vector3(0, 1.62f, 0.17f), new Vector3(0.08f, 0.08f, 0.14f), Color.white); // shows where they look
             Plugin.Logger.LogInfo($"avatar for player {id} built (material: {(_material != null ? _material.shader.name : "game default")})");
-            return new Avatar { Root = root, Renders = new[] { body, head, nose } };
+            return new Avatar { Root = root, Renders = new[] { body, head, nose }, BuiltAt = Time.realtimeSinceStartup };
         }
 
         static Renderer Part(PrimitiveType type, Transform parent, Vector3 pos, Vector3 scale, Color color)
@@ -78,6 +85,20 @@ namespace NivalisCoop.Plugin
         {
             if (_materialTried) return _material;
             _materialTried = true;
+            // the game's own materials are known to render in its pipeline: take the shader of one of them
+            try
+            {
+                Shader found = null;
+                foreach (var m in Resources.FindObjectsOfTypeAll<Material>())
+                {
+                    if (m == null || m.shader == null) continue;
+                    string n = m.shader.name;
+                    if (n.StartsWith("Universal Render Pipeline/Unlit") || n.StartsWith("HDRP/Unlit")) { found = m.shader; break; }
+                    if (found == null && (n.StartsWith("Universal Render Pipeline/Lit") || n.StartsWith("HDRP/Lit"))) found = m.shader;
+                }
+                if (found != null) { _material = new Material(found); return _material; }
+            }
+            catch (Exception ex) { Plugin.Logger.LogWarning("could not look for a game material: " + ex.Message); }
             foreach (var name in new[] { "Universal Render Pipeline/Unlit", "Universal Render Pipeline/Lit", "Unlit/Color", "Sprites/Default", "Standard" })
             {
                 var shader = Shader.Find(name);

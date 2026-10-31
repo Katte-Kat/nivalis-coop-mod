@@ -94,7 +94,7 @@ namespace NivalisCoop.Plugin
         }
 
         // other players ---------------------------------------------------
-        // Phase 1 shows them as name tags. Spawning a real NPC avatar needs the game's character classes.
+        // The pose is the camera of the other player, so the tag goes just above their head; the body is RemoteAvatars.
         static void DrawNameTags()
         {
             var cam = Camera.main;
@@ -104,7 +104,7 @@ namespace NivalisCoop.Plugin
             foreach (var player in CoopHost.Client.Players.Values)
             {
                 if (!CoopHost.Interpolator.TryGet(player.Id, now, out var pose) || pose.Scene != scene) continue;
-                var screen = cam.WorldToScreenPoint(new Vector3(pose.X, pose.Y + 1.9f, pose.Z));
+                var screen = cam.WorldToScreenPoint(new Vector3(pose.X, pose.Y + 0.3f, pose.Z));
                 if (screen.z <= 0) continue; // behind the camera
                 if (!_loggedTag)
                 {
