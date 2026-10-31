@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- BepInEx IL2CPP plugin. It compiles against the assemblies BepInEx generates in the game folder
+       (BepInEx/core and BepInEx/interop), so BepInEx must be installed and the game started once first.
+       Build with build-plugin.sh (add the word install as first argument to copy it into the game; the game folder
+       comes from the environment variable NIVALIS_GAME_DIR or -p:GameDir=...). The script also makes the network library target net6.0. -->
+  <PropertyGroup>
+    <TargetFramework Condition="'$(PluginTargetFramework)' == ''">net6.0</TargetFramework>
+    <TargetFramework Condition="'$(PluginTargetFramework)' != ''">$(PluginTargetFramework)</TargetFramework>
+    <AssemblyName>NivalisCoop</AssemblyName>
+    <RootNamespace>NivalisCoop.Plugin</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GameDir Condition="'$(GameDir)' == ''">$(NIVALIS_GAME_DIR)</GameDir>
+    <GameDir Condition="'$(GameDir)' == '' and Exists('C:/Program Files (x86)/Steam/steamapps/common/Nivalis Nights')">C:/Program Files (x86)/Steam/steamapps/common/Nivalis Nights</GameDir>
+    <Interop>$(GameDir)/BepInEx/interop</Interop>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="Exists('$(Interop)/Unity.InputSystem.dll')">
+    <DefineConstants>$(DefineConstants);HAS_INPUTSYSTEM</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../NivalisCoop.Net/NivalisCoop.Net.csproj" />
+    <Reference Include="$(GameDir)/BepInEx/core/*.dll" Private="false" />
+    <Reference Include="$(Interop)/*.dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CheckGameDir" BeforeTargets="ResolveAssemblyReferences;CoreCompile" Condition="'$(GameDir)' == '' Or !Exists('$(GameDir)/BepInEx/interop')">
+    <Error Text="Set NIVALIS_GAME_DIR (or -p:GameDir=...) to the Nivalis Nights folder. BepInEx must be installed there and the game started once, so that BepInEx/interop exists." />
+  </Target>
+
+  <Target Name="Install" AfterTargets="Build" Condition="'$(Install)' == 'true'">
+    <ItemGroup>
+      <PluginFile Include="$(OutDir)NivalisCoop.dll;$(OutDir)NivalisCoop.Net.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PluginFile)" DestinationFolder="$(GameDir)/BepInEx/plugins/NivalisCoop" />
+    <Message Importance="high" Text="Installed into $(GameDir)/BepInEx/plugins/NivalisCoop" />
+  </Target>
+
+</Project>

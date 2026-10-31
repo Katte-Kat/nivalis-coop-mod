@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Plain .NET library, no Unity or BepInEx references: it can be built and tested anywhere.
+       Default target is what a dev machine has (net10.0). The mod build (build-plugin.sh sets
+       NIVALIS_MOD_BUILD=1) targets net6.0, the runtime BepInEx IL2CPP loads plugins with. -->
+  <PropertyGroup>
+    <TargetFramework Condition="'$(NIVALIS_MOD_BUILD)' != '1'">net10.0</TargetFramework>
+    <TargetFramework Condition="'$(NIVALIS_MOD_BUILD)' == '1'">net6.0</TargetFramework>
+    <RootNamespace>NivalisCoop.Net</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>
