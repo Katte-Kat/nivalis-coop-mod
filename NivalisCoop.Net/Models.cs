@@ -73,4 +73,6 @@ public sealed record NpcSnapshot(int From, int Tick, bool Full, JsonArray Npcs) 
 /// <summary>To the session leader: another player wants something done with a person (talk to them, ...).</summary>
 public sealed record NpcAction(int From, string? Npc, string Action, JsonNode? Data) : CoopEvent;
 public sealed record NpcRefused(string Reason) : CoopEvent;
+/// <summary>What the server keeps for you alone in the world you entered (your inventory, for example).</summary>
+public sealed record PlayerDataReceived(string World, JsonObject Data) : CoopEvent;
 public sealed record Disconnected(string Reason) : CoopEvent;

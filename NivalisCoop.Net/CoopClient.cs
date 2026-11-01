@@ -13,7 +13,7 @@ namespace NivalisCoop.Net;
 /// </summary>
 public sealed partial class CoopClient : IDisposable
 {
-    public const string ModVersion = "0.4.0";
+    public const string ModVersion = "0.5.0";
 
     readonly ConcurrentQueue<CoopEvent> _events = new();
     readonly Dictionary<int, PlayerInfo> _players = new();
@@ -233,6 +233,10 @@ public sealed partial class CoopClient : IDisposable
     /// <summary>Be shown as this game model from now on; the server keeps it for your next logins.</summary>
     public void SetAvatar(string model) => Send(new JsonObject { ["t"] = "avatar_set", ["avatar"] = model });
 
+    /// <summary>Keep something that is yours alone in the current world (key a-z0-9_), for your next visits.</summary>
+    public void SetPlayerData(string key, JsonNode? value) =>
+        Send(new JsonObject { ["t"] = "pdata_set", ["key"] = key, ["value"] = value?.DeepClone() });
+
     public void DeleteState(string key) => Send(new JsonObject { ["t"] = "state_del", ["key"] = key });
 
     /// <summary>One-shot message to everybody else, or to one player (trade request, wave, ...).</summary>
@@ -329,6 +333,12 @@ public sealed partial class CoopClient : IDisposable
                 break;
             case "npc_act":
                 _events.Enqueue(new NpcAction(Int(m["from"]), m["npc"] is JsonValue ? Str(m["npc"]) : null, Str(m["action"]), m["data"]?.DeepClone()));
+                break;
+            case "pdata":
+                _events.Enqueue(new PlayerDataReceived(Str(m["world"]), (m["data"] as JsonObject)?.DeepClone() as JsonObject ?? new JsonObject()));
+                break;
+            case "pdata_reject":
+                _events.Enqueue(new NpcRefused("player data: " + Str(m["reason"])));
                 break;
             case "npc_reject":
                 _events.Enqueue(new NpcRefused(Str(m["reason"])));

@@ -37,7 +37,9 @@ namespace NivalisCoop.Plugin
 
             try
             {
-                new HarmonyLib.Harmony(Guid).PatchAll(typeof(Plugin).Assembly);
+                var harmony = new HarmonyLib.Harmony(Guid);
+                harmony.PatchAll(typeof(Plugin).Assembly);
+                ActionSync.Install(harmony);
                 SaveGuard.CleanLeftovers();
                 Logger.LogInfo("conversation hooks installed");
             }

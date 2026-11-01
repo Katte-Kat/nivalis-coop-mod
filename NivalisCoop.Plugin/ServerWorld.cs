@@ -175,6 +175,7 @@ namespace NivalisCoop.Plugin
                         MultiplayerScreen.Close();
                         CurrentSlot = slot;
                         WorldTime.OnWorldLoaded();
+                        InventorySync.OnWorldLoaded();
                         Singleton<SerializationManager>.Instance.Load(SaveName(slot));
                         _deleteLoadedAt = Time.realtimeSinceStartup + 90f; // the game reads it while the scene loads
                         _deleteLoaded = SaveName(slot);

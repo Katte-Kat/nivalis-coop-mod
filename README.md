@@ -48,6 +48,12 @@ On your first login on a server you choose how the others see you: a window list
 "Look" shows one in front of you, "Take" stores it on the server for every later login (F8 window: change it).
 The others see you as that model, walking at the speed you move.
 
+**One savegame for everybody.** Only the session leader's game saves the world, so whatever another player does to
+the world is done in the leader's game too: buying, selling or renting venues, apartments and greenhouses, hiring,
+firing and re-tasking staff, staff shifts and wages, the menu and its prices, opening and closing, buying
+ingredients and furniture for a venue, greenhouse upgrades and unlocked places. Your **inventory is your own**: the
+server keeps it for you per world (a new player in a world starts empty).
+
 People (customers, staff, NPCs) are simulated by one game per world, the session leader: the first player in the
 world, and when they leave, the next one, by itself. The other games show the people where the leader has them.
 

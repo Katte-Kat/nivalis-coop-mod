@@ -30,6 +30,9 @@ namespace NivalisCoop.Plugin
             return false;
         }
 
+        /// <summary>The world changed by another player's doing: the leader stores it on the server soon (once a minute at most).</summary>
+        public static void RequestUpload() { if (CoopHost.Client.IsLeader) _uploadWanted = true; }
+
         public static void Tick()
         {
             if (!_uploadWanted || ServerWorld.CurrentSlot == null || ServerWorld.Busy) return;
