@@ -44,6 +44,7 @@ namespace NivalisCoop.Plugin
         static readonly Dictionary<string, DialogueDecided> _early = new Dictionary<string, DialogueDecided>();
         static string _currentTree;
         static string _suppressStartFor;   // a conversation we opened because somebody else started it: do not report it back
+        static string _requestTree, _requestPrev; // the game's last request: where in the tree the conversation starts
         static bool _inDialogue;
         static DialogueDecided _applyLater;
         static float _applyAt;
@@ -72,14 +73,22 @@ namespace NivalisCoop.Plugin
         {
             _lastGameEvent = _lastActivity = Time.realtimeSinceStartup;
             if (!Active || step == null) return;
-            string tree = step.DialogueTree != null ? step.DialogueTree.Guid : null;
+            string tree = step.DialogueTree != null ? KeyOf(step.DialogueTree) : null;
             if (tree == null || (_inDialogue && tree == _currentTree)) return;
             _inDialogue = true;
             _currentTree = tree;
             if (_suppressStartFor == tree) { _suppressStartFor = null; return; }
             string person = step.Character != null ? step.Character.Guid : null;
             Plugin.Logger.LogInfo($"conversation started here: tree {tree}, person {person}; telling the others");
-            CoopHost.Client.StartDialogue(tree, person, null);
+            string prev = _requestTree == step.DialogueTree.Guid ? _requestPrev : null;
+            CoopHost.Client.StartDialogue(tree, person, string.IsNullOrEmpty(prev) ? null : prev);
+        }
+
+        public static void OnRequest(DialogueEventArgs args)
+        {
+            if (args == null || args.DialogueTree == null) return;
+            _requestTree = args.DialogueTree.Guid;
+            _requestPrev = args.prevDialGUID;
         }
 
         public static void OnEnd()
@@ -87,6 +96,7 @@ namespace NivalisCoop.Plugin
             _lastGameEvent = _lastActivity = Time.realtimeSinceStartup;
             _inDialogue = false;
             _currentTree = null;
+            _keys.Clear();   // trees can go with the world; their addresses must not be taken for others later
             _pending = null;
             _applyLater = null;
         }
@@ -101,7 +111,7 @@ namespace NivalisCoop.Plugin
 
             var ids = new StringBuilder();
             for (int i = 0; i < options; i++) ids.Append(node.Choices[i].articyID).Append(',');
-            string tree = node.DialogueTree != null ? node.DialogueTree.Guid : "?";
+            string tree = node.DialogueTree != null ? KeyOf(node.DialogueTree) : "?";
             string round = $"{ServerWorld.CurrentSlot}|{tree}|{Hash(ids.ToString())}";
             _pending = new Pending { Round = round, Options = options, Node = node, Original = _real };
             Plugin.Logger.LogInfo($"vote opened: {options} answers, round {round}");
@@ -212,17 +222,17 @@ namespace NivalisCoop.Plugin
         static void MirrorStart(DialogueStarted s)
         {
             if (!Active) return;
+            if (_inDialogue && s.Tree == _currentTree) { Plugin.Logger.LogInfo($"conversation {s.Tree}: the other player is in it too"); return; }
             if (_inDialogue) { Plugin.Logger.LogInfo($"conversation {s.Tree} started by another player, but one is already running here"); return; }
             try
             {
                 var manager = Singleton<DialogueTreeProgressManager>.Instance;
-                IDialogueTree tree;
-                if (!manager.AllDialogueTrees.TryGetValue(s.Tree, out tree) || tree == null) tree = FindTree(s.Tree);
+                IDialogueTree tree = Resolve(s.Tree);
                 if (tree == null) { Plugin.Logger.LogWarning("unknown conversation " + s.Tree); return; }
                 Person person = null;
                 if (s.Person != null && Singleton<PersonDataManager>.InstanceExist())
                     Singleton<PersonDataManager>.Instance.guidToPersons.TryGetValue(s.Person, out person);
-                var args = new DialogueEventArgs { DialogueTree = tree, Character = person };
+                var args = new DialogueEventArgs { DialogueTree = tree, Character = person, prevDialGUID = s.Prev };
                 _suppressStartFor = s.Tree;
                 Plugin.Logger.LogInfo($"opening the conversation {s.Tree} that another player started");
                 manager.OnDialogueRequest(args);
@@ -230,8 +240,78 @@ namespace NivalisCoop.Plugin
             catch (Exception ex) { Plugin.Logger.LogError("could not open the other player's conversation: " + ex); }
         }
 
-        // Not every conversation is in AllDialogueTrees (people's own small talks, orders ...): look through every data
-        // object of the game that is a dialogue tree, by its guid.
+        // The guid of a dialogue tree is made when the game loads, so the same conversation has a different tree guid
+        // in every game (seen in the first two-player game: same person, same answers, two guids). What people say is
+        // a conversation of a story arc, and its articy id comes from the game data: that one is the same everywhere.
+        // Such conversations are sent as "c:<articy id>", the rest (trees from the game's data objects) by tree guid.
+        static readonly System.Collections.Generic.Dictionary<IntPtr, string> _keys = new System.Collections.Generic.Dictionary<IntPtr, string>();
+
+        static string KeyOf(IDialogueTree tree)
+        {
+            if (_keys.TryGetValue(tree.Pointer, out var key)) return key;
+            key = tree.Guid;
+            try
+            {
+                foreach (var arc in StoryArcs())
+                {
+                    var conv = arc.GetConversation(tree);
+                    if (conv == null) continue;
+                    string id = conv.ArticyGUID;
+                    if (string.IsNullOrEmpty(id)) id = conv.Guid;
+                    if (!string.IsNullOrEmpty(id)) key = "c:" + id;
+                    break;
+                }
+            }
+            catch (Exception ex) { Plugin.Logger.LogWarning("conversations: no story arc for a tree: " + ex.Message); }
+            return _keys[tree.Pointer] = key;
+        }
+
+        static IDialogueTree Resolve(string key)
+        {
+            if (key.StartsWith("c:"))
+            {
+                string id = key.Substring(2);
+                try
+                {
+                    var conv = Singleton<AgentsDialogueManager>.InstanceExist() ? Singleton<AgentsDialogueManager>.Instance.FindDialogueById(id) : null;
+                    if (conv != null) return conv.GetContent();
+                }
+                catch (Exception ex) { Plugin.Logger.LogWarning("conversations: FindDialogueById: " + ex.Message); }
+                foreach (var arc in StoryArcs())
+                {
+                    var convs = new Il2CppSystem.Collections.Generic.HashSet<IConversation>();
+                    arc.GetAllConvs(convs);
+                    foreach (var conv in convs)
+                        if (conv != null && (conv.ArticyGUID == id || conv.Guid == id)) return conv.GetContent();
+                }
+                return null;
+            }
+            var manager = Singleton<DialogueTreeProgressManager>.Instance;
+            if (manager.AllDialogueTrees.TryGetValue(key, out var tree) && tree != null) return tree;
+            return FindTree(key);
+        }
+
+        static List<StoryArc> StoryArcs()
+        {
+            var arcs = new List<StoryArc>();
+            if (!Singleton<AgentsDialogueManager>.InstanceExist()) return arcs;
+            var byId = Singleton<AgentsDialogueManager>.Instance._storyArcDialogueAssignersByID;
+            if (byId == null) return arcs;
+            IntPtr arcClass = Il2CppInterop.Runtime.Il2CppClassPointerStore<StoryArc>.NativeClassPtr;
+            foreach (var kv in byId)
+            {
+                var story = kv.Value?.StoryArc;
+                if (story == null) continue;
+                IntPtr ptr = story.Pointer;
+                if (Il2CppInterop.Runtime.IL2CPP.il2cpp_class_is_assignable_from(arcClass, Il2CppInterop.Runtime.IL2CPP.il2cpp_object_get_class(ptr)))
+                    arcs.Add(new StoryArc(ptr));
+            }
+            return arcs;
+        }
+
+        // Not every conversation is in AllDialogueTrees: what people say to you (their story, small talk, orders ...) is
+        // a conversation inside a story arc (AgentsDialogueManager -> StoryArc -> IConversation.GetContent()), not a
+        // data object of its own. Look through all story arcs, and through every data object that is a dialogue tree.
         static readonly System.Collections.Generic.Dictionary<string, IDialogueTree> _trees = new System.Collections.Generic.Dictionary<string, IDialogueTree>();
         static float _treesScannedAt = -999f;
 
@@ -240,17 +320,46 @@ namespace NivalisCoop.Plugin
             if (_trees.TryGetValue(guid, out var t) && t != null) return t;
             if (Time.realtimeSinceStartup - _treesScannedAt < 5f) return null;
             _treesScannedAt = Time.realtimeSinceStartup;
+            int arcs = 0;
+            try { arcs = ScanStoryArcs(); }
+            catch (Exception ex) { Plugin.Logger.LogWarning("conversations: story arcs could not be read: " + ex.Message); }
+            try { ScanDataObjects(); }
+            catch (Exception ex) { Plugin.Logger.LogWarning("conversations: data objects could not be read: " + ex.Message); }
+            Plugin.Logger.LogInfo($"conversations: {_trees.Count} dialogue trees known ({arcs} story arcs)");
+            return _trees.TryGetValue(guid, out t) ? t : null;
+        }
+
+        static void Remember(IDialogueTree tree)
+        {
+            if (tree == null) return;
+            string g = null;
+            try { g = tree.Guid; } catch { }
+            if (!string.IsNullOrEmpty(g)) _trees[g] = tree;
+        }
+
+        static int ScanStoryArcs()
+        {
+            var arcs = StoryArcs();
+            foreach (var arc in arcs)
+            {
+                var convs = new Il2CppSystem.Collections.Generic.HashSet<IConversation>();
+                arc.GetAllConvs(convs);
+                foreach (var conv in convs)
+                {
+                    try { Remember(conv?.GetContent()); } catch { }
+                }
+            }
+            return arcs.Count;
+        }
+
+        static void ScanDataObjects()
+        {
             IntPtr iface = Il2CppInterop.Runtime.Il2CppClassPointerStore<IDialogueTree>.NativeClassPtr;
             foreach (var so in Resources.FindObjectsOfTypeAll<ScriptableObject>())
             {
                 if (so == null || !Il2CppInterop.Runtime.IL2CPP.il2cpp_class_is_assignable_from(iface, Il2CppInterop.Runtime.IL2CPP.il2cpp_object_get_class(so.Pointer))) continue;
-                var tree = new IDialogueTree(so.Pointer);
-                string g = null;
-                try { g = tree.Guid; } catch { }
-                if (!string.IsNullOrEmpty(g)) _trees[g] = tree;
+                Remember(new IDialogueTree(so.Pointer));
             }
-            Plugin.Logger.LogInfo($"conversations: {_trees.Count} dialogue trees known");
-            return _trees.TryGetValue(guid, out t) ? t : null;
         }
 
         // ------------------------------------------------------------ overlay: who voted for what
@@ -324,6 +433,16 @@ namespace NivalisCoop.Plugin
         {
             try { DialogueSharing.OnStep(stepDisplayData); }
             catch (Exception ex) { Plugin.Logger.LogError("OnDialogueStep hook: " + ex); }
+        }
+    }
+
+    [HarmonyPatch(typeof(DialogueTreeProgressManager), "OnDialogueRequest")]
+    internal static class DialogueRequestPatch
+    {
+        static void Prefix(DialogueEventArgs dialogueEventArgs)
+        {
+            try { DialogueSharing.OnRequest(dialogueEventArgs); }
+            catch (Exception ex) { Plugin.Logger.LogError("OnDialogueRequest hook: " + ex); }
         }
     }
 

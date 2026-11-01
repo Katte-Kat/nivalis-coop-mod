@@ -27,7 +27,7 @@ or **login** -> **play**.
 | `save_get` | `slot`, `version`? | download a savegame (default: newest) |
 | `save_list` | | list the newest version of every savegame |
 | `join_world` | `slot` (or `null`) | the server world you play in; shared conversations only reach players of the same world |
-| `dlg_start` | `tree`, `person`?, `prev`? | you started a conversation (guids from the game): the others in your world are told |
+| `dlg_start` | `tree`, `person`?, `prev`? | you started a conversation: the others in your world are told. `tree` is `c:<articy id>` for a conversation of a story arc (the same in every game; a tree guid is made new by every game) or else the tree guid |
 | `dlg_vote` | `round`, `choice`, `options` | vote for an answer; `round` is any string that is the same on every client for the same choice, `options` the number of answers (2-16) |
 | `time_init` | `seconds`, `rate` | you are the first in the world (the server sent `time_need`): start its clock with your game's time (game seconds) and speed (game seconds per real second) |
 | `time_pause` | `on`, `reason`? | hold the world's clock (a conversation) or release your hold; the server keeps one pause per player |
