@@ -43,10 +43,60 @@ namespace NivalisCoop.Plugin
             _newHeld.Add(entity.Pointer);
         }
 
+        // the ghosts the world had when it was loaded (plus the ones we made for others): anything placed that is not
+        // among them is new, whichever menu it came from
+        static readonly HashSet<string> _atLoad = new HashSet<string>();
+        static string _snapWorld;
+        static float _snapAt;
+
+        public static void OnWorldLoaded() { _atLoad.Clear(); _snapWorld = null; _snapAt = Time.realtimeSinceStartup + 15f; }
+
+        static void SnapshotGhosts()
+        {
+            if (_snapWorld == ServerWorld.CurrentSlot || ServerWorld.CurrentSlot == null || !GhostManager.HasInstance || Time.realtimeSinceStartup < _snapAt) return;
+            try
+            {
+                _atLoad.Clear();
+                foreach (var kv in GhostManager.Instance._ghostsDictionary) _atLoad.Add(kv.Key);
+                _snapWorld = ServerWorld.CurrentSlot;
+                Plugin.Logger.LogInfo($"world objects: {_atLoad.Count} ghosts in the loaded world");
+            }
+            catch (Exception ex) { Plugin.Logger.LogWarning("world objects snapshot: " + ex.Message); _snapAt = Time.realtimeSinceStartup + 10f; }
+        }
+
+        static bool IsNew(HoldableEntity entity, bool fromInventory)
+        {
+            if (fromInventory) return !string.IsNullOrEmpty(entity.GhostId) && _announced.Add(entity.GhostId);
+            string id = entity.GhostId;
+            return _snapWorld == ServerWorld.CurrentSlot && !string.IsNullOrEmpty(id) && !_atLoad.Contains(id) && _announced.Add(id);
+        }
+
+        static readonly HashSet<string> _announced = new HashSet<string>();
+
         /// <summary>From ObjectSync when something was put down: a new object is announced before its position.</summary>
         public static void OnPlaced(HoldableEntity entity)
         {
-            if (!Active || !_newHeld.Remove(entity.Pointer)) return;
+            if (!Active || entity == null) return;
+            // the game may give a new object its ghost only after it was put down: look a second later
+            _checkLater.Add((entity, _newHeld.Remove(entity.Pointer), Time.realtimeSinceStartup + 1.0f));
+        }
+
+        static readonly List<(HoldableEntity E, bool FromInventory, float At)> _checkLater = new List<(HoldableEntity, bool, float)>();
+
+        static void CheckPlaced()
+        {
+            for (int i = _checkLater.Count - 1; i >= 0; i--)
+            {
+                var (e, fromInv, at) = _checkLater[i];
+                if (Time.realtimeSinceStartup < at) continue;
+                _checkLater.RemoveAt(i);
+                try { if (e != null && Active && IsNew(e, fromInv)) Announce(e); }
+                catch (Exception ex) { Plugin.Logger.LogWarning("new object: " + ex.Message); }
+            }
+        }
+
+        static void Announce(HoldableEntity entity)
+        {
             var type = entity.ItemType;
             string id = entity.GhostId;
             if (type == null || string.IsNullOrEmpty(id)) { Plugin.Logger.LogWarning("a new object without item type or id: not shared"); return; }
@@ -87,8 +137,8 @@ namespace NivalisCoop.Plugin
         {
             if (ev is Disconnected) { _standIns.Clear(); _newHeld.Clear(); return; }
             if (ev is not GameEvent ge || (ge.Kind != SpawnKind && ge.Kind != StoreKind) || ge.Data is not JsonObject d) return;
-            if (ServerWorld.CurrentSlot == null || !(d["world"] is JsonValue w && w.GetValue<string>() == ServerWorld.CurrentSlot)) return;
-            string id = d["id"]?.GetValue<string>();
+            if (ServerWorld.CurrentSlot == null || !(d["world"] is JsonValue w && JsonNum.S(w) == ServerWorld.CurrentSlot)) return;
+            string id = JsonNum.S(d["id"]);
             if (string.IsNullOrEmpty(id)) return;
             _applying = true;
             try
@@ -103,7 +153,7 @@ namespace NivalisCoop.Plugin
         static void Make(string id, JsonObject d)
         {
             if (Find(id, out _)) return; // we have it already
-            string item = d["item"]?.GetValue<string>();
+            string item = JsonNum.S(d["item"]);
             var type = FindType(item);
             if (type == null || type.EntityPrefab == null) { Plugin.Logger.LogWarning($"object {item}: no such item in this game"); return; }
             var p = d["p"] as JsonArray;
@@ -111,11 +161,12 @@ namespace NivalisCoop.Plugin
             var rot = new Quaternion(F(p[3]), F(p[4]), F(p[5]), F(p[6]));
             // A furniture view only lives with a ghost, so do it the game's way round: make the ghost from the prefab's
             // view, put it there and register it; the GhostManager then makes the view for it (and saves the ghost).
-            int scene = d["scene"] is JsonValue sv && sv.TryGetValue<int>(out var si) ? si : NpcSync.LocalGhostScene;
+            int scene = d["scene"] is JsonValue sv ? JsonNum.I(sv) : NpcSync.LocalGhostScene;
             var ghost = GhostFromPrefab(type, pos, rot, scene);
             if (ghost != null)
             {
                 _ghostMade.Add((id, ghost.Id, type.name, Time.realtimeSinceStartup + 0.3f));
+                _atLoad.Add(ghost.Id); // ours stands for theirs: never announce it as new
                 Made++;
                 Plugin.Logger.LogInfo($"object {item} made for another player as ghost {ghost.Id} ({id})");
                 SaveGuard.RequestUpload();
@@ -216,6 +267,8 @@ namespace NivalisCoop.Plugin
         public static void Tick()
         {
             if (Time.realtimeSinceStartup > 20f) ListFurnitureOnce();
+            SnapshotGhosts();
+            if (_checkLater.Count > 0) CheckPlaced();
             for (int i = _ghostMade.Count - 1; i >= 0; i--)
             {
                 var (remote, ghostId, item, at) = _ghostMade[i];
@@ -300,7 +353,7 @@ namespace NivalisCoop.Plugin
 
         public static bool Applying => _applying;
 
-        static float F(JsonNode n) => n is JsonValue v && v.TryGetValue<double>(out var x) ? (float)x : 0f;
+        static float F(JsonNode n) => JsonNum.F(n);
 
         static readonly Dictionary<string, ItemType> _types = new Dictionary<string, ItemType>();
 

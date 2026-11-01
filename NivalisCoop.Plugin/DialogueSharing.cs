@@ -216,7 +216,9 @@ namespace NivalisCoop.Plugin
             try
             {
                 var manager = Singleton<DialogueTreeProgressManager>.Instance;
-                if (!manager.AllDialogueTrees.TryGetValue(s.Tree, out var tree)) { Plugin.Logger.LogWarning("unknown conversation " + s.Tree); return; }
+                IDialogueTree tree;
+                if (!manager.AllDialogueTrees.TryGetValue(s.Tree, out tree) || tree == null) tree = FindTree(s.Tree);
+                if (tree == null) { Plugin.Logger.LogWarning("unknown conversation " + s.Tree); return; }
                 Person person = null;
                 if (s.Person != null && Singleton<PersonDataManager>.InstanceExist())
                     Singleton<PersonDataManager>.Instance.guidToPersons.TryGetValue(s.Person, out person);
@@ -226,6 +228,29 @@ namespace NivalisCoop.Plugin
                 manager.OnDialogueRequest(args);
             }
             catch (Exception ex) { Plugin.Logger.LogError("could not open the other player's conversation: " + ex); }
+        }
+
+        // Not every conversation is in AllDialogueTrees (people's own small talks, orders ...): look through every data
+        // object of the game that is a dialogue tree, by its guid.
+        static readonly System.Collections.Generic.Dictionary<string, IDialogueTree> _trees = new System.Collections.Generic.Dictionary<string, IDialogueTree>();
+        static float _treesScannedAt = -999f;
+
+        static IDialogueTree FindTree(string guid)
+        {
+            if (_trees.TryGetValue(guid, out var t) && t != null) return t;
+            if (Time.realtimeSinceStartup - _treesScannedAt < 5f) return null;
+            _treesScannedAt = Time.realtimeSinceStartup;
+            IntPtr iface = Il2CppInterop.Runtime.Il2CppClassPointerStore<IDialogueTree>.NativeClassPtr;
+            foreach (var so in Resources.FindObjectsOfTypeAll<ScriptableObject>())
+            {
+                if (so == null || !Il2CppInterop.Runtime.IL2CPP.il2cpp_class_is_assignable_from(iface, Il2CppInterop.Runtime.IL2CPP.il2cpp_object_get_class(so.Pointer))) continue;
+                var tree = new IDialogueTree(so.Pointer);
+                string g = null;
+                try { g = tree.Guid; } catch { }
+                if (!string.IsNullOrEmpty(g)) _trees[g] = tree;
+            }
+            Plugin.Logger.LogInfo($"conversations: {_trees.Count} dialogue trees known");
+            return _trees.TryGetValue(guid, out t) ? t : null;
         }
 
         // ------------------------------------------------------------ overlay: who voted for what

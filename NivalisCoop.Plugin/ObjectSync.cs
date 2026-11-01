@@ -35,9 +35,11 @@ namespace NivalisCoop.Plugin
             if (_applying || WorldObjects.Applying || CoopHost.Client.State != ClientState.Connected || ServerWorld.CurrentSlot == null) return;
             WorldObjects.OnPlaced(entity); // a new object is announced before its position
             string id = entity.GhostId;
-            if (string.IsNullOrEmpty(id)) return;
+            if (string.IsNullOrEmpty(id)) { _noIdYet.Add((entity, Time.realtimeSinceStartup + 1.2f)); return; } // a new object gets its ghost a moment later
             _toReport[id] = Time.realtimeSinceStartup + 1.2f; // report when the object has come to rest
         }
+
+        static readonly List<(HoldableEntity E, float At)> _noIdYet = new List<(HoldableEntity, float)>();
 
         // ---- from the server -----------------------------------------------------------------------------------
         public static void OnEvent(CoopEvent ev)
@@ -60,7 +62,7 @@ namespace NivalisCoop.Plugin
             _toApply[id] = (pos, rot);
         }
 
-        static float F(JsonNode n) => n is JsonValue v && v.TryGetValue<double>(out var d) ? (float)d : 0f;
+        static float F(JsonNode n) => JsonNum.F(n);
 
         public static void Tick(CoopClient client)
         {
@@ -71,6 +73,14 @@ namespace NivalisCoop.Plugin
                 foreach (var kv in client.World) Take(kv.Key, kv.Value); // what was already placed when we came
             }
             float now = Time.realtimeSinceStartup;
+
+            for (int i = _noIdYet.Count - 1; i >= 0; i--)
+            {
+                if (now < _noIdYet[i].At) continue;
+                var e = _noIdYet[i].E;
+                _noIdYet.RemoveAt(i);
+                if (e != null && !string.IsNullOrEmpty(e.GhostId)) _toReport[e.GhostId] = now + 0.2f;
+            }
 
             if (_toReport.Count > 0)
             {
@@ -112,6 +122,24 @@ namespace NivalisCoop.Plugin
             _known[ghostId] = (p, r);
             client.SetState(Prefix + ghostId, new JsonArray(p.x, p.y, p.z, r.x, r.y, r.z, r.w));
             Reported++;
+        }
+    }
+
+    // The player puts things down through the placement system (it calls into the entity in native code, which the
+    // HoldableEntity.Place hook did not see): what the player held before DoPlacement is what was placed.
+    [HarmonyPatch(typeof(PlacementSystem), nameof(PlacementSystem.DoPlacement))]
+    internal static class DoPlacementPatch
+    {
+        static void Prefix(PlacementSystem __instance, out HoldableEntity __state)
+        {
+            __state = null;
+            try { __state = __instance.HeldObject; } catch (Exception ex) { Plugin.Logger.LogError("DoPlacement hook: " + ex); }
+        }
+
+        static void Postfix(HoldableEntity __state)
+        {
+            try { if (__state != null) ObjectSync.OnPlaced(__state); }
+            catch (Exception ex) { Plugin.Logger.LogError("DoPlacement hook: " + ex); }
         }
     }
 

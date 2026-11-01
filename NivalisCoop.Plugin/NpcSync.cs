@@ -90,7 +90,7 @@ namespace NivalisCoop.Plugin
             _haveSnapshot = true;
         }
 
-        static float F(JsonNode n) => n is JsonValue v && v.TryGetValue<double>(out var d) ? (float)d : 0f;
+        static float F(JsonNode n) => JsonNum.F(n);
 
         // ---- every frame --------------------------------------------------------------------------------------------
         public static void Tick(CoopClient client)
@@ -230,6 +230,19 @@ namespace NivalisCoop.Plugin
                 foreach (var id in gone) _sent.Remove(id);
             }
             if (list.Count == 0 && !full) return;
+            // one packet stays small; what does not fit goes in the next one (it still counts as not sent)
+            if (list.Count > MaxPerPacket)
+            {
+                for (int i = list.Count - 1; i >= MaxPerPacket; i--)
+                {
+                    var o = (JsonObject)list[i];
+                    string id = JsonNum.S(o["id"]);
+                    if (o["gone"] != null) _sent[id] = new Sent { Pos = new Vector3(float.NaN, 0, 0) }; // say "gone" next time
+                    else _sent.Remove(id);
+                    list.RemoveAt(i);
+                }
+                full = false;
+            }
             client.SendNpcState(list, ++_tick, full);
             if (!_loggedFirstSend) { _loggedFirstSend = true; Plugin.Logger.LogInfo($"people: first snapshot sent, {present.Count} people, {list.Count} entries"); }
             Line = $"People: we simulate them for everybody ({present.Count})";
@@ -257,7 +270,7 @@ namespace NivalisCoop.Plugin
         /// <summary>The game's scene number of the ghosts around us (-1 while we do not know).</summary>
         public static int LocalGhostScene { get; private set; } = -1;
 
-        const int MaxPeople = 300;
+        const int MaxPeople = 300, MaxPerPacket = 350;
         const float GhostRadius = 40f;
         static readonly List<(float D, string Id, Character Ch)> _pick = new List<(float, string, Character)>();
 

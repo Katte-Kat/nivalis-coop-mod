@@ -195,27 +195,27 @@ namespace NivalisCoop.Plugin
             if (n == null) return null;
             if (n is JsonValue v)
             {
-                if (want == typeof(bool)) return v.GetValue<bool>();
-                if (want == typeof(int)) return (int)v.GetValue<double>();
-                if (want == typeof(long)) return (long)v.GetValue<double>();
-                if (want == typeof(float)) return (float)v.GetValue<double>();
-                if (want == typeof(double)) return v.GetValue<double>();
-                if (want == typeof(string)) return v.GetValue<string>();
-                if (want.IsEnum) return Enum.ToObject(want, (long)v.GetValue<double>());
+                if (want == typeof(bool)) return JsonNum.B(v);
+                if (want == typeof(int)) return JsonNum.I(v);
+                if (want == typeof(long)) return (long)JsonNum.D(v);
+                if (want == typeof(float)) return JsonNum.F(v);
+                if (want == typeof(double)) return JsonNum.D(v);
+                if (want == typeof(string)) return JsonNum.S(v);
+                if (want.IsEnum) return Enum.ToObject(want, (long)JsonNum.D(v));
                 throw new Exception("cannot read a " + want.Name);
             }
             var o = (JsonObject)n;
             Il2CppObjectBase found = null;
             if (o["me"] is JsonValue me)
             {
-                if (me.GetValue<string>() == "inventory") found = UnityEngine.Object.FindObjectOfType<PlayerInventory>();
+                if (JsonNum.S(me) == "inventory") found = UnityEngine.Object.FindObjectOfType<PlayerInventory>();
                 else if (Singleton<PlayerManager>.InstanceExist()) found = Singleton<PlayerManager>.Instance.LocalPlayer;
             }
-            else if (o["person"] is JsonValue pg) found = FindPerson(pg.GetValue<string>());
-            else if (o["rpd"] is JsonValue rg) found = FindPerson(rg.GetValue<string>())?.RuntimeData;
-            else if (o["ghost"] is JsonValue gid) found = GhostManager.HasInstance ? GhostManager.Instance.GetGhostById(gid.GetValue<string>()) : null;
-            else if (o["so"] is JsonValue sn) found = FindAsset(sn.GetValue<string>(), o["type"] is JsonValue tn ? tn.GetValue<string>() : null);
-            else if (o["single"] is JsonValue st) found = FindSingle(st.GetValue<string>());
+            else if (o["person"] is JsonValue pg) found = FindPerson(JsonNum.S(pg));
+            else if (o["rpd"] is JsonValue rg) found = FindPerson(JsonNum.S(rg))?.RuntimeData;
+            else if (o["ghost"] is JsonValue gid) found = GhostManager.HasInstance ? GhostManager.Instance.GetGhostById(JsonNum.S(gid)) : null;
+            else if (o["so"] is JsonValue sn) found = FindAsset(JsonNum.S(sn), o["type"] is JsonValue tn ? JsonNum.S(tn) : null);
+            else if (o["single"] is JsonValue st) found = FindSingle(JsonNum.S(st));
             if (found == null) throw new Exception($"not in this world: {n.ToJsonString()}");
             // hand it over as the type the function wants (an interface or a base class of the object)
             return want.IsInstanceOfType(found) ? found : Activator.CreateInstance(want, found.Pointer);

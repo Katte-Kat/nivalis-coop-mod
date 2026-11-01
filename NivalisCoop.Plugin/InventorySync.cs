@@ -99,8 +99,8 @@ namespace NivalisCoop.Plugin
             items.Clear();
             foreach (var e in list)
             {
-                string name = e[0].GetValue<string>();
-                int count = (int)e[1].GetValue<double>();
+                string name = JsonNum.S(e[0]);
+                int count = JsonNum.I(e[1]);
                 var type = FindType(name);
                 if (type == null) { Plugin.Logger.LogWarning($"inventory: item {name} is not in this game"); continue; }
                 items.TryCreateInInventory(type, count, 0);

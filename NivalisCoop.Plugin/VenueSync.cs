@@ -30,8 +30,8 @@ namespace NivalisCoop.Plugin
         {
             if (ev is Disconnected) { _known.Clear(); return; }
             if (ev is not GameEvent ge || ge.Kind != Kind || ge.Data is not JsonObject d) return;
-            if (ServerWorld.CurrentSlot == null || !(d["world"] is JsonValue w && w.GetValue<string>() == ServerWorld.CurrentSlot)) return;
-            string name = d["venue"]?.GetValue<string>();
+            if (ServerWorld.CurrentSlot == null || !(d["world"] is JsonValue w && JsonNum.S(w) == ServerWorld.CurrentSlot)) return;
+            string name = JsonNum.S(d["venue"]);
             if (name == null || d["s"] is not JsonObject s) return;
             var venue = Find(name);
             if (venue == null) { Plugin.Logger.LogWarning($"venue {name} is not in this world"); return; }
@@ -108,14 +108,14 @@ namespace NivalisCoop.Plugin
         {
             var g = venue.RuntimeData;
             if (g == null) throw new Exception("venue not loaded");
-            if (s["open"] is JsonValue o && g.IsOpen != null) g.IsOpen.Value = o.GetValue<bool>();
+            if (s["open"] is JsonValue o && g.IsOpen != null) g.IsOpen.Value = JsonNum.B(o);
 
             if (s["menu"] is JsonArray menu && g.Menu != null)
             {
                 var m = g.Menu;
                 bool same = m.Count == menu.Count;
                 for (int i = 0; same && i < m.Count; i++)
-                    same = m[i]?.RecipeDefinition != null && m[i].RecipeDefinition.name == menu[i][0].GetValue<string>() && m[i].Price == (int)menu[i][1].GetValue<double>();
+                    same = m[i]?.RecipeDefinition != null && m[i].RecipeDefinition.name == JsonNum.S(menu[i][0]) && m[i].Price == JsonNum.I(menu[i][1]);
                 if (!same)
                 {
                     var keep = new Dictionary<string, MealMenuItem>();
@@ -123,8 +123,8 @@ namespace NivalisCoop.Plugin
                     while (m.Count > 0) m.RemoveAt(m.Count - 1);
                     foreach (var e in menu)
                     {
-                        string recipe = e[0].GetValue<string>();
-                        int price = (int)e[1].GetValue<double>();
+                        string recipe = JsonNum.S(e[0]);
+                        int price = JsonNum.I(e[1]);
                         MealMenuItem item;
                         if (keep.TryGetValue(recipe, out var old)) item = old;
                         else
@@ -145,11 +145,11 @@ namespace NivalisCoop.Plugin
                 bool changed = false;
                 foreach (var e in staff)
                 {
-                    var person = FindPerson(e[0].GetValue<string>());
+                    var person = FindPerson(JsonNum.S(e[0]));
                     var rd = person?.RuntimeData;
                     if (rd == null) continue;
-                    var hours = new Vector2((float)e[1].GetValue<double>(), (float)e[2].GetValue<double>());
-                    int tasks = (int)e[3].GetValue<double>(), wage = (int)e[4].GetValue<double>();
+                    var hours = new Vector2(JsonNum.F(e[1]), JsonNum.F(e[2]));
+                    int tasks = JsonNum.I(e[3]), wage = JsonNum.I(e[4]);
                     if (rd.WorkingHours != hours) { rd.WorkingHours = hours; changed = true; }
                     if ((int)rd.Tasks != tasks) { rd.Tasks = (VenueTasks)tasks; changed = true; }
                     if (rd.Wage != wage) { rd.Wage = wage; changed = true; }
