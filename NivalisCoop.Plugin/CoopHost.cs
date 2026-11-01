@@ -105,6 +105,7 @@ namespace NivalisCoop.Plugin
             WorldTime.OnEvent(ev);
             ObjectSync.OnEvent(ev);
             NpcSync.OnEvent(ev);
+            AvatarChooser.OnEvent(ev);
             switch (ev)
             {
                 case PlayerJoined j:

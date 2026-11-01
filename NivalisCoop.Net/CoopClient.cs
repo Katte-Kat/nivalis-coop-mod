@@ -13,7 +13,7 @@ namespace NivalisCoop.Net;
 /// </summary>
 public sealed partial class CoopClient : IDisposable
 {
-    public const string ModVersion = "0.3.0";
+    public const string ModVersion = "0.4.0";
 
     readonly ConcurrentQueue<CoopEvent> _events = new();
     readonly Dictionary<int, PlayerInfo> _players = new();
@@ -30,6 +30,8 @@ public sealed partial class CoopClient : IDisposable
     public int PlayerId { get; private set; }
     public string Name { get; private set; } = "";
     public bool IsOp { get; private set; }
+    /// <summary>The model you are shown as to the others; null on your first login on this server (choose one).</summary>
+    public string? Avatar { get; private set; }
     public int Rev { get; private set; }
     public int TickRate { get; private set; }
     /// <summary>Server clock minus local clock in ms (from the last keepalive).</summary>
@@ -73,11 +75,12 @@ public sealed partial class CoopClient : IDisposable
             PlayerId = Int(reply["id"]);
             Name = Str(reply["name"], name);
             IsOp = reply["op"] is JsonValue op && op.TryGetValue<bool>(out var isOp) && isOp;
+            Avatar = reply["avatar"] is JsonValue myAvatar ? Str(myAvatar) : null;
             TickRate = Int(reply["tick_rate"], 20);
             Rev = Int(reply["rev"]);
             if (reply["players"] is JsonArray players)
                 foreach (var p in players.OfType<JsonObject>())
-                    _players[Int(p["id"])] = new PlayerInfo(Int(p["id"]), Str(p["name"]), Pose.FromJson(p["pose"]));
+                    _players[Int(p["id"])] = new PlayerInfo(Int(p["id"]), Str(p["name"]), Pose.FromJson(p["pose"]), p["avatar"] is JsonValue av ? Str(av) : null);
             if (reply["state"] is JsonObject state)
                 foreach (var kv in state) _world[kv.Key] = kv.Value?.DeepClone();
             _saves = (reply["saves"] as JsonArray)?.OfType<JsonObject>().Select(ParseSave).ToArray() ?? Array.Empty<SaveInfo>();
@@ -132,7 +135,11 @@ public sealed partial class CoopClient : IDisposable
         {
             switch (ev)
             {
-                case PlayerJoined j: _players[j.Id] = new PlayerInfo(j.Id, j.Name, j.Pose); break;
+                case PlayerJoined j: _players[j.Id] = new PlayerInfo(j.Id, j.Name, j.Pose, j.Avatar); break;
+                case PlayerAvatarChanged pa:
+                    if (pa.Id == PlayerId) Avatar = pa.Avatar;
+                    else if (_players.TryGetValue(pa.Id, out var who)) who.Avatar = pa.Avatar;
+                    break;
                 case PlayerLeft l: _players.Remove(l.Id); break;
                 case PlayersMoved m:
                     foreach (var kv in m.Poses)
@@ -223,6 +230,9 @@ public sealed partial class CoopClient : IDisposable
     public void SendNpcAction(string? npc, string action, JsonNode? data = null) =>
         Send(new JsonObject { ["t"] = "npc_act", ["npc"] = npc, ["action"] = action, ["data"] = data?.DeepClone() });
 
+    /// <summary>Be shown as this game model from now on; the server keeps it for your next logins.</summary>
+    public void SetAvatar(string model) => Send(new JsonObject { ["t"] = "avatar_set", ["avatar"] = model });
+
     public void DeleteState(string key) => Send(new JsonObject { ["t"] = "state_del", ["key"] = key });
 
     /// <summary>One-shot message to everybody else, or to one player (trade request, wave, ...).</summary>
@@ -292,7 +302,8 @@ public sealed partial class CoopClient : IDisposable
                 _events.Enqueue(new PlayersMoved(Int(m["n"]), poses));
                 break;
             }
-            case "player_join": _events.Enqueue(new PlayerJoined(Int(m["id"]), Str(m["name"]), Pose.FromJson(m["pose"]))); break;
+            case "player_join": _events.Enqueue(new PlayerJoined(Int(m["id"]), Str(m["name"]), Pose.FromJson(m["pose"]), m["avatar"] is JsonValue ja ? Str(ja) : null)); break;
+            case "player_avatar": _events.Enqueue(new PlayerAvatarChanged(Int(m["id"]), Str(m["avatar"]))); break;
             case "player_leave": _events.Enqueue(new PlayerLeft(Int(m["id"]), Str(m["name"]))); break;
             case "state":
             {

@@ -44,6 +44,10 @@ A server world is never saved into your normal single-player saves: the game's s
 while you are in one, and the session leader's game stores the world on the server instead. The temporary
 `COOP_<world>.sav` the transfer needs is removed again right away.
 
+On your first login on a server you choose how the others see you: a window lists the game's people models,
+"Look" shows one in front of you, "Take" stores it on the server for every later login (F8 window: change it).
+The others see you as that model, walking at the speed you move.
+
 People (customers, staff, NPCs) are simulated by one game per world, the session leader: the first player in the
 world, and when they leave, the next one, by itself. The other games show the people where the leader has them.
 

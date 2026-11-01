@@ -173,10 +173,11 @@ namespace NivalisCoop.Plugin
                 var ch = kv.Value;
                 if (ch == null) continue;
                 var pos = ch.transform.position;
-                float d = Nearest(near, pos);
+                float d = Nearest(near, pos, LocalGhostScene);
                 if (d < InterestRadius * InterestRadius) _pick.Add((d, kv.Key, ch));
             }
-            // a player far from us: our game has no Characters there, so take the ghosts around them
+            // a player far from us or in another part of the city: our game has no Characters there, but it simulates
+            // the ghosts of the whole city, so take the ghosts around them (in their part of the city)
             if (near.Count > 1)
             {
                 foreach (var ghost in GhostManager.Instance._agentGhosts)
@@ -185,8 +186,10 @@ namespace NivalisCoop.Plugin
                     string id = ghost.Id;
                     if (string.IsNullOrEmpty(id) || _byGhost.ContainsKey(id)) continue;
                     var gp = ghost.Position;
+                    int gs = ghost.SceneIndex;
                     float best = float.MaxValue;
-                    for (int i = 1; i < near.Count; i++) best = Mathf.Min(best, (near[i] - gp).sqrMagnitude);
+                    for (int i = 1; i < near.Count; i++)
+                        if (near[i].Scene == gs || near[i].Scene < 0) best = Mathf.Min(best, (near[i].Pos - gp).sqrMagnitude);
                     if (best < GhostRadius * GhostRadius) _pick.Add((best, id, null));
                 }
             }
@@ -235,31 +238,35 @@ namespace NivalisCoop.Plugin
         static double R(float v) => Math.Round(v, 2);
 
         const float InterestRadius = 70f;
-        static readonly List<Vector3> _near = new List<Vector3>();
+        static readonly List<(Vector3 Pos, int Scene)> _near = new List<(Vector3, int)>();
 
         /// <summary>Where the players of this world are: us first, then everybody in our scene.</summary>
-        static List<Vector3> PlayerPositions(CoopClient client)
+        static List<(Vector3 Pos, int Scene)> PlayerPositions(CoopClient client)
         {
             _near.Clear();
             var cam = Camera.main;
-            if (cam != null) _near.Add(cam.transform.position);
-            string scene = LocalPose.SceneKey();
+            _near.Add((cam != null ? cam.transform.position : Vector3.zero, LocalGhostScene));
+            string world = ServerWorld.CurrentSlot + "|";
             double now = Time.realtimeSinceStartupAsDouble;
             foreach (var p in client.Players.Values)
-                if (CoopHost.Interpolator.TryGet(p.Id, now, out var pose) && pose.Scene == scene) _near.Add(new Vector3(pose.X, pose.Y, pose.Z));
+                if (CoopHost.Interpolator.TryGet(p.Id, now, out var pose) && pose.Scene.StartsWith(world, StringComparison.Ordinal))
+                    _near.Add((new Vector3(pose.X, pose.Y, pose.Z), LocalPose.GhostSceneOf(pose.Scene)));
             return _near;
         }
+
+        /// <summary>The game's scene number of the ghosts around us (-1 while we do not know).</summary>
+        public static int LocalGhostScene { get; private set; } = -1;
 
         const int MaxPeople = 300;
         const float GhostRadius = 40f;
         static readonly List<(float D, string Id, Character Ch)> _pick = new List<(float, string, Character)>();
 
         /// <summary>Squared distance to the nearest player (0 when we do not know where anybody is).</summary>
-        static float Nearest(List<Vector3> near, Vector3 pos)
+        static float Nearest(List<(Vector3 Pos, int Scene)> near, Vector3 pos, int scene)
         {
-            if (near.Count == 0) return 0f;
             float best = float.MaxValue;
-            foreach (var p in near) best = Mathf.Min(best, (p - pos).sqrMagnitude);
+            foreach (var p in near)
+                if (p.Scene == scene || p.Scene < 0 || scene < 0) best = Mathf.Min(best, (p.Pos - pos).sqrMagnitude);
             return best;
         }
 
@@ -305,8 +312,16 @@ namespace NivalisCoop.Plugin
                 var ghost = agent.MyGhost;
                 if (ghost == null || string.IsNullOrEmpty(ghost.Id)) continue;
                 _byGhost[ghost.Id] = ch;
+                int sc = ghost.SceneIndex;
+                _sceneVotes[sc] = _sceneVotes.TryGetValue(sc, out var n) ? n + 1 : 1;
             }
+            int bestScene = -1, bestVotes = 0;
+            foreach (var kv in _sceneVotes) if (kv.Value > bestVotes) { bestScene = kv.Key; bestVotes = kv.Value; }
+            _sceneVotes.Clear();
+            LocalGhostScene = bestScene;
         }
+
+        static readonly Dictionary<int, int> _sceneVotes = new Dictionary<int, int>();
 
         // the ghosts follow too, so the game decides visibility and culling from the right places
         static void WriteGhosts()

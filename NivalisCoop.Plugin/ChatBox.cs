@@ -88,6 +88,17 @@ namespace NivalisCoop.Plugin
             BlockGameInput(true);
         }
 
+        static bool _held;
+
+        /// <summary>Another window (the avatar choice) needs the mouse and keys: hold the game's controls like the open chat does.</summary>
+        public static void Hold(bool on)
+        {
+            if (on == _held) return;
+            _held = on;
+            if (on) { _releaseAt = 0; BlockGameInput(true); }
+            else if (!_open) _releaseAt = Time.realtimeSinceStartup + 0.35f;
+        }
+
         public static void Close()
         {
             _open = false;
@@ -193,7 +204,7 @@ namespace NivalisCoop.Plugin
             if (!_inputBlocked) return;
             try
             {
-                if (_open) { DisableEverything("(the game switched them on again)"); return; }
+                if (_open || _held) { DisableEverything("(the game switched them on again)"); return; }
                 if (Time.realtimeSinceStartup >= _releaseAt) BlockGameInput(false);
                 else DisableEverything("(waiting to hand the controls back)");
             }

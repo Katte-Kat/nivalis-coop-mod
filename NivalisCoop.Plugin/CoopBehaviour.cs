@@ -48,6 +48,7 @@ namespace NivalisCoop.Plugin
             RemoteAvatars.Tick(client);
             NpcSync.Tick(client);
             SaveGuard.Tick();
+            AvatarChooser.Tick(client);
             if (client.State == ClientState.Connected && LocalPose.TryGet(out var pose))
             {
                 if (!_loggedFirstPose)
@@ -100,6 +101,7 @@ namespace NivalisCoop.Plugin
             DrawNameTags();
             DialogueSharing.OnGUI();
             ChatBox.OnGUI();
+            AvatarChooser.OnGUI();
             if (CoopHost.WindowOpen) DrawWindow();
         }
 
@@ -113,7 +115,7 @@ namespace NivalisCoop.Plugin
             double now = Time.realtimeSinceStartupAsDouble;
             foreach (var player in CoopHost.Client.Players.Values)
             {
-                if (!CoopHost.Interpolator.TryGet(player.Id, now, out var pose) || pose.Scene != scene) continue;
+                if (!CoopHost.Interpolator.TryGet(player.Id, now, out var pose) || !LocalPose.SameScene(pose.Scene, scene)) continue;
                 var screen = cam.WorldToScreenPoint(new Vector3(pose.X, pose.Y + 0.3f, pose.Z));
                 if (screen.z <= 0) continue; // behind the camera
                 if (!_loggedTag)
@@ -201,6 +203,7 @@ namespace NivalisCoop.Plugin
                 if (WorldTime.Line.Length > 0) GUILayout.Label(WorldTime.Line);
                 if (ObjectSync.Line.Length > 0) GUILayout.Label(ObjectSync.Line);
                 if (NpcSync.Line.Length > 0) GUILayout.Label(NpcSync.Line);
+                if (GUILayout.Button("Your look: " + (client.Avatar ?? "not chosen") + " (change)")) { CoopHost.WindowOpen = false; AvatarChooser.Open(); }
                 DrawServerWorld(client);
                 GUILayout.Space(4);
                 GUILayout.Label("Chat (click the line, type, Enter sends):");
@@ -221,7 +224,22 @@ namespace NivalisCoop.Plugin
         public static string SceneKey()
         {
             string scene = SceneManager.GetActiveScene().name;
-            return ServerWorld.CurrentSlot == null ? scene : ServerWorld.CurrentSlot + "|" + scene;
+            // the game's own scene number of the people around us goes along, so the session leader knows which part
+            // of the city to send to us
+            return ServerWorld.CurrentSlot == null ? scene : ServerWorld.CurrentSlot + "|" + scene + "#" + NpcSync.LocalGhostScene;
+        }
+
+        /// <summary>Same world and Unity scene (the people-scene number after '#' does not count).</summary>
+        public static bool SameScene(string a, string b)
+        {
+            int ia = a.LastIndexOf('#'), ib = b.LastIndexOf('#');
+            return string.CompareOrdinal(ia >= 0 ? a.Substring(0, ia) : a, ib >= 0 ? b.Substring(0, ib) : b) == 0;
+        }
+
+        public static int GhostSceneOf(string sceneKey)
+        {
+            int hash = sceneKey.LastIndexOf('#');
+            return hash >= 0 && int.TryParse(sceneKey.Substring(hash + 1), out var n) ? n : -1;
         }
 
         /// <summary>

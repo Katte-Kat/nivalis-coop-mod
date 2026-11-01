@@ -20,10 +20,12 @@ public readonly record struct Pose(float X, float Y, float Z, float Ry, string A
 
 public sealed class PlayerInfo
 {
-    public PlayerInfo(int id, string name, Pose pose) { Id = id; Name = name; Pose = pose; }
+    public PlayerInfo(int id, string name, Pose pose, string? avatar = null) { Id = id; Name = name; Pose = pose; Avatar = avatar; }
     public int Id { get; }
     public string Name { get; }
     public Pose Pose { get; internal set; }
+    /// <summary>The game model this player chose to be shown as, null when they have not chosen yet.</summary>
+    public string? Avatar { get; internal set; }
 }
 
 public sealed record ServerStatus(
@@ -40,7 +42,9 @@ public sealed record LoginResult(
 // Everything the network thread learns is queued as one of these and handed to the game
 // thread by CoopClient.Poll(), so Unity objects are only ever touched from Unity's thread.
 public abstract record CoopEvent;
-public sealed record PlayerJoined(int Id, string Name, Pose Pose) : CoopEvent;
+public sealed record PlayerJoined(int Id, string Name, Pose Pose, string? Avatar = null) : CoopEvent;
+/// <summary>A player chose another model to be shown as (also sent back to the one who chose).</summary>
+public sealed record PlayerAvatarChanged(int Id, string Avatar) : CoopEvent;
 public sealed record PlayerLeft(int Id, string Name) : CoopEvent;
 public sealed record PlayersMoved(int Tick, IReadOnlyDictionary<int, Pose> Poses) : CoopEvent;
 public sealed record StateChanged(int Rev, IReadOnlyDictionary<string, JsonNode?> Set, IReadOnlyList<string> Deleted) : CoopEvent;

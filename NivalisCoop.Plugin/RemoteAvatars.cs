@@ -6,12 +6,14 @@ using UnityEngine;
 namespace NivalisCoop.Plugin
 {
     /// <summary>
-    /// Draws the other players in the world: a simple body and head at their interpolated position, with the same
-    /// scene check as the name tags. The player is first person, so the game has no body model to reuse.
+    /// Draws the other players in the world at their interpolated position, with the same scene check as the name
+    /// tags: as the people model they chose (AvatarModels), or as a simple coloured body and head while they have not
+    /// chosen one or this game has not loaded that model yet.
     /// </summary>
     internal static class RemoteAvatars
     {
-        sealed class Avatar { public GameObject Root; public Renderer[] Renders; public bool Logged; public float BuiltAt; }
+        sealed class Avatar { public GameObject Root; public Renderer[] Renders; public bool Logged; public float BuiltAt; public string Model;
+            public Animator Anim; public int[] SpeedParams; public Vector3 LastPos; public float Speed; public bool HasWalk; }
         static readonly Dictionary<int, Avatar> _avatars = new Dictionary<int, Avatar>();
         static Material _material;
         static bool _materialTried;
@@ -34,13 +36,20 @@ namespace NivalisCoop.Plugin
 
             foreach (var player in client.Players.Values)
             {
-                bool visible = CoopHost.Interpolator.TryGet(player.Id, now, out var pose) && pose.Scene == scene;
+                bool visible = CoopHost.Interpolator.TryGet(player.Id, now, out var pose) && LocalPose.SameScene(pose.Scene, scene);
                 if (!visible) { if (_avatars.TryGetValue(player.Id, out var hidden)) hidden.Root.SetActive(false); continue; }
-                if (!_avatars.TryGetValue(player.Id, out var avatar)) avatar = _avatars[player.Id] = Build(player.Id);
+                if (_avatars.TryGetValue(player.Id, out var avatar) && avatar.Model != player.Avatar && AvatarModels.Has(player.Avatar))
+                {
+                    Remove(player.Id); // they chose a model, or it has just become available here
+                    avatar = null;
+                }
+                if (avatar == null) avatar = _avatars[player.Id] = Build(player.Id, player.Avatar);
                 avatar.Root.SetActive(true);
                 // the pose is the player's camera, about 1.6 m above the feet
-                avatar.Root.transform.position = new Vector3(pose.X, pose.Y - 1.6f, pose.Z);
+                var feet = new Vector3(pose.X, pose.Y - 1.6f, pose.Z);
+                avatar.Root.transform.position = feet;
                 avatar.Root.transform.rotation = Quaternion.Euler(0, pose.Ry, 0);
+                Animate(avatar, feet);
                 if (!avatar.Logged && Time.realtimeSinceStartup > avatar.BuiltAt + 1.5f)
                 {
                     avatar.Logged = true;
@@ -51,15 +60,68 @@ namespace NivalisCoop.Plugin
             }
         }
 
-        static Avatar Build(int id)
+        static Avatar Build(int id, string model)
         {
+            var copy = AvatarModels.Build(model, "NivalisCoop_Player_" + id);
+            if (copy != null)
+            {
+                Plugin.Logger.LogInfo($"avatar for player {id}: model {model}");
+                var anim = copy.GetComponentInChildren<Animator>(true);
+                return new Avatar { Root = copy, Renders = copy.GetComponentsInChildren<Renderer>(true), BuiltAt = Time.realtimeSinceStartup, Model = model, Logged = true,
+                                    Anim = anim, SpeedParams = SpeedParameters(anim), LastPos = copy.transform.position, HasWalk = HasFloat(anim, "Walk") };
+            }
             var root = new GameObject("NivalisCoop_Player_" + id);
             var color = Colors[id % Colors.Length];
             var body = Part(PrimitiveType.Capsule, root.transform, new Vector3(0, 0.8f, 0), new Vector3(0.55f, 0.8f, 0.55f), color);
             var head = Part(PrimitiveType.Sphere, root.transform, new Vector3(0, 1.62f, 0), new Vector3(0.32f, 0.32f, 0.32f), color * 0.85f);
             var nose = Part(PrimitiveType.Cube, root.transform, new Vector3(0, 1.62f, 0.17f), new Vector3(0.08f, 0.08f, 0.14f), Color.white); // shows where they look
             Plugin.Logger.LogInfo($"avatar for player {id} built (material: {(_material != null ? _material.shader.name : "game default")})");
-            return new Avatar { Root = root, Renders = new[] { body, head, nose }, BuiltAt = Time.realtimeSinceStartup };
+            return new Avatar { Root = root, Renders = new[] { body, head, nose }, BuiltAt = Time.realtimeSinceStartup, Model = AvatarModels.Has(model) ? model : null };
+        }
+
+        // The game's people walk by an animator float (CharacterMovement.speedId): the copy gets the speed the player
+        // really moves at, so it stands, walks or runs like a person of the game.
+        static int[] SpeedParameters(Animator anim)
+        {
+            var found = new List<int>();
+            if (anim == null) return found.ToArray();
+            try
+            {
+                foreach (var p in anim.parameters)
+                    if (p.type == AnimatorControllerParameterType.Float && p.name.IndexOf("speed", StringComparison.OrdinalIgnoreCase) >= 0)
+                        found.Add(p.nameHash);
+            }
+            catch (Exception ex) { Plugin.Logger.LogWarning("avatar animator parameters: " + ex.Message); }
+            return found.ToArray();
+        }
+
+        static readonly int WalkHash = Animator.StringToHash("Walk"), SprintHash = Animator.StringToHash("WalkSprint");
+
+        static bool HasFloat(Animator anim, string name)
+        {
+            if (anim == null) return false;
+            try { foreach (var p in anim.parameters) if (p.type == AnimatorControllerParameterType.Float && p.name == name) return true; }
+            catch { }
+            return false;
+        }
+
+        static void Animate(Avatar a, Vector3 feet)
+        {
+            if (a.Anim == null || a.SpeedParams == null || a.SpeedParams.Length == 0) return;
+            float dt = Mathf.Max(Time.deltaTime, 0.001f);
+            var d = feet - a.LastPos; d.y = 0;
+            a.LastPos = feet;
+            float v = d.magnitude / dt;
+            if (v > 12f) v = 0f; // a jump (teleport, scene change), not walking
+            a.Speed = Mathf.Lerp(a.Speed, v, 1f - Mathf.Exp(-6f * dt));
+            foreach (var h in a.SpeedParams) a.Anim.SetFloat(h, a.Speed);
+            // the walk style is a weight per style (Character.ChangeWalkWeight): plain walking, sprinting when fast
+            if (a.HasWalk)
+            {
+                float sprint = Mathf.Clamp01((a.Speed - 3.5f) / 2f);
+                a.Anim.SetFloat(WalkHash, 1f - sprint);
+                a.Anim.SetFloat(SprintHash, sprint);
+            }
         }
 
         static Renderer Part(PrimitiveType type, Transform parent, Vector3 pos, Vector3 scale, Color color)
