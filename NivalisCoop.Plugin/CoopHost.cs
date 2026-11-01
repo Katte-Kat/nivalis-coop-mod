@@ -109,6 +109,7 @@ namespace NivalisCoop.Plugin
             ActionSync.OnEvent(ev);
             VenueSync.OnEvent(ev);
             InventorySync.OnEvent(ev);
+            WorldObjects.OnEvent(ev);
             switch (ev)
             {
                 case PlayerJoined j:

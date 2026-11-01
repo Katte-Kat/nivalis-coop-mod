@@ -13,7 +13,7 @@ namespace NivalisCoop.Net;
 /// </summary>
 public sealed partial class CoopClient : IDisposable
 {
-    public const string ModVersion = "0.5.0";
+    public const string ModVersion = "0.6.0";
 
     readonly ConcurrentQueue<CoopEvent> _events = new();
     readonly Dictionary<int, PlayerInfo> _players = new();

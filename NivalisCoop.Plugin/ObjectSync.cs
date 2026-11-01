@@ -32,7 +32,8 @@ namespace NivalisCoop.Plugin
         // ---- from the game -------------------------------------------------------------------------------------
         public static void OnPlaced(HoldableEntity entity)
         {
-            if (_applying || CoopHost.Client.State != ClientState.Connected || ServerWorld.CurrentSlot == null) return;
+            if (_applying || WorldObjects.Applying || CoopHost.Client.State != ClientState.Connected || ServerWorld.CurrentSlot == null) return;
+            WorldObjects.OnPlaced(entity); // a new object is announced before its position
             string id = entity.GhostId;
             if (string.IsNullOrEmpty(id)) return;
             _toReport[id] = Time.realtimeSinceStartup + 1.2f; // report when the object has come to rest
@@ -85,7 +86,7 @@ namespace NivalisCoop.Plugin
                 foreach (var kv in _toApply)
                 {
                     HoldableEntity entity = null;
-                    if (!HoldableEntity.TryGetLoadedEntity(kv.Key, out entity) || entity == null) continue; // not loaded here (yet)
+                    if (!WorldObjects.Find(kv.Key, out entity)) continue; // not loaded here (yet)
                     if (entity.IsHeld || entity.IsBeingPlaced) continue; // somebody here is just handling it
                     var cur = entity.transform;
                     if ((cur.position - kv.Value.Pos).sqrMagnitude > MovedEnough * MovedEnough)
@@ -105,7 +106,7 @@ namespace NivalisCoop.Plugin
         static void Report(CoopClient client, string ghostId)
         {
             HoldableEntity entity = null;
-            if (!HoldableEntity.TryGetLoadedEntity(ghostId, out entity) || entity == null) return;
+            if (!WorldObjects.Find(ghostId, out entity)) return;
             var t = entity.transform;
             var p = t.position; var r = t.rotation;
             _known[ghostId] = (p, r);

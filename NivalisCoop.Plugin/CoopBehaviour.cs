@@ -51,6 +51,7 @@ namespace NivalisCoop.Plugin
             AvatarChooser.Tick(client);
             VenueSync.Tick(client);
             InventorySync.Tick(client);
+            WorldObjects.Tick();
             if (client.State == ClientState.Connected && LocalPose.TryGet(out var pose))
             {
                 if (!_loggedFirstPose)
@@ -208,6 +209,7 @@ namespace NivalisCoop.Plugin
                 if (ActionSync.Line.Length > 0) GUILayout.Label(ActionSync.Line);
                 if (VenueSync.Line.Length > 0) GUILayout.Label(VenueSync.Line);
                 if (InventorySync.Line.Length > 0) GUILayout.Label(InventorySync.Line);
+                if (WorldObjects.Line.Length > 0) GUILayout.Label(WorldObjects.Line);
                 if (GUILayout.Button("Your look: " + (client.Avatar ?? "not chosen") + " (change)")) { CoopHost.WindowOpen = false; AvatarChooser.Open(); }
                 DrawServerWorld(client);
                 GUILayout.Space(4);
