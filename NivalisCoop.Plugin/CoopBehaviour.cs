@@ -46,6 +46,8 @@ namespace NivalisCoop.Plugin
             MoneySync.Tick(client);
             ObjectSync.Tick(client);
             RemoteAvatars.Tick(client);
+            NpcSync.Tick(client);
+            SaveGuard.Tick();
             if (client.State == ClientState.Connected && LocalPose.TryGet(out var pose))
             {
                 if (!_loggedFirstPose)
@@ -56,6 +58,14 @@ namespace NivalisCoop.Plugin
                 client.SendMove(pose); // throttled inside the client
             }
         }
+
+        void LateUpdate()
+        {
+            try { NpcSync.LateTick(); }
+            catch (Exception ex) { if (!_loggedLate) { _loggedLate = true; Plugin.Logger.LogError("people (late update): " + ex); } }
+        }
+
+        static bool _loggedLate;
 
         void ToggleWindow()
         {
@@ -190,6 +200,7 @@ namespace NivalisCoop.Plugin
                 if (MoneySync.Line.Length > 0) GUILayout.Label(MoneySync.Line);
                 if (WorldTime.Line.Length > 0) GUILayout.Label(WorldTime.Line);
                 if (ObjectSync.Line.Length > 0) GUILayout.Label(ObjectSync.Line);
+                if (NpcSync.Line.Length > 0) GUILayout.Label(NpcSync.Line);
                 DrawServerWorld(client);
                 GUILayout.Space(4);
                 GUILayout.Label("Chat (click the line, type, Enter sends):");

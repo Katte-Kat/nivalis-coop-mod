@@ -104,6 +104,7 @@ namespace NivalisCoop.Plugin
             DialogueSharing.OnEvent(ev);
             WorldTime.OnEvent(ev);
             ObjectSync.OnEvent(ev);
+            NpcSync.OnEvent(ev);
             switch (ev)
             {
                 case PlayerJoined j:

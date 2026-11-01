@@ -84,8 +84,16 @@ namespace NivalisCoop.Plugin
         public static bool AskingToConfirm => Time.realtimeSinceStartup < _confirmLoadUntil;
 
         /// <summary>Called every frame: uploads the first save of a freshly created world as soon as the game allows it.</summary>
+        static float _deleteLoadedAt;
+        static string _deleteLoaded;
+
         public static void Tick()
         {
+            if (_deleteLoaded != null && Time.realtimeSinceStartup >= _deleteLoadedAt && !_busy)
+            {
+                SaveGuard.DeleteLocal(_deleteLoaded);
+                _deleteLoaded = null;
+            }
             if (_pendingNewWorld == null || _busy || Time.realtimeSinceStartup < _nextPendingTry) return;
             _nextPendingTry = Time.realtimeSinceStartup + 5f;
             var client = CoopHost.Client;
@@ -106,7 +114,16 @@ namespace NivalisCoop.Plugin
             if (!Singleton<SerializationManager>.InstanceExist()) { _line = "No game is loaded"; return; }
             _busy = true;
             _line = "Saving the game...";
-            bool saved = Singleton<SerializationManager>.Instance.Save(SaveName(slot), false);
+            if (CurrentSlot == slot && client.LeaderId != null && !client.IsLeader)
+            {
+                _busy = false;
+                _line = "Only the session leader's game saves this world (it does that by itself)";
+                return;
+            }
+            bool saved;
+            SaveGuard.OwnSave = true;
+            try { saved = Singleton<SerializationManager>.Instance.Save(SaveName(slot), false); }
+            finally { SaveGuard.OwnSave = false; }
             if (!saved) { _busy = false; _line = "The game did not save (not possible right now?)"; return; }
 
             string path = SavePath(slot);
@@ -124,6 +141,7 @@ namespace NivalisCoop.Plugin
                     if (_pendingNewWorld == slot) _pendingNewWorld = null;
                     _line = $"World '{slot}' stored on the server as version {info.Version} ({info.Size / 1e6:F1} MB)";
                     CoopHost.Say(_line);
+                    _main.Enqueue(() => SaveGuard.DeleteLocal(SaveName(slot))); // the server has it now
                 }
                 catch (Exception ex) { _line = "Upload failed: " + ex.Message; }
                 finally { _busy = false; }
@@ -158,6 +176,8 @@ namespace NivalisCoop.Plugin
                         CurrentSlot = slot;
                         WorldTime.OnWorldLoaded();
                         Singleton<SerializationManager>.Instance.Load(SaveName(slot));
+                        _deleteLoadedAt = Time.realtimeSinceStartup + 90f; // the game reads it while the scene loads
+                        _deleteLoaded = SaveName(slot);
                         _busy = false;
                         Plugin.Logger.LogInfo($"server world '{slot}': Load({SaveName(slot)}) called");
                     });

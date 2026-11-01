@@ -62,4 +62,11 @@ public sealed record TimeRefused(string Reason) : CoopEvent;
 public sealed record StateRejected(string? Key, string Reason, JsonNode? Current) : CoopEvent;
 public sealed record ChatReceived(int Id, string Name, string Text) : CoopEvent;
 public sealed record GameEvent(int From, string Kind, JsonNode? Data) : CoopEvent;
+/// <summary>Whose game simulates the people of your world. <paramref name="Handover"/>: the old leader left and this one takes over.</summary>
+public sealed record LeaderChanged(string World, int? Id, string? Name, bool Handover) : CoopEvent;
+/// <summary>The session leader's snapshot of the people in the world. <paramref name="Full"/>: false = only these changed.</summary>
+public sealed record NpcSnapshot(int From, int Tick, bool Full, JsonArray Npcs) : CoopEvent;
+/// <summary>To the session leader: another player wants something done with a person (talk to them, ...).</summary>
+public sealed record NpcAction(int From, string? Npc, string Action, JsonNode? Data) : CoopEvent;
+public sealed record NpcRefused(string Reason) : CoopEvent;
 public sealed record Disconnected(string Reason) : CoopEvent;

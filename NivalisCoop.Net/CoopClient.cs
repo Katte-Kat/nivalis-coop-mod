@@ -13,7 +13,7 @@ namespace NivalisCoop.Net;
 /// </summary>
 public sealed partial class CoopClient : IDisposable
 {
-    public const string ModVersion = "0.2.0";
+    public const string ModVersion = "0.3.0";
 
     readonly ConcurrentQueue<CoopEvent> _events = new();
     readonly Dictionary<int, PlayerInfo> _players = new();
@@ -190,7 +190,7 @@ public sealed partial class CoopClient : IDisposable
     }
 
     /// <summary>Tell the server which world you play in; shared conversations only reach players of the same world (null = none).</summary>
-    public void JoinWorld(string? slot) => Send(new JsonObject { ["t"] = "join_world", ["slot"] = slot });
+    public void JoinWorld(string? slot) { LeaderId = null; Send(new JsonObject { ["t"] = "join_world", ["slot"] = slot }); }
 
     /// <summary>You started a conversation: the others in your world are told to open the same one.</summary>
     public void StartDialogue(string tree, string? person, string? prev) =>
@@ -210,6 +210,18 @@ public sealed partial class CoopClient : IDisposable
 
     /// <summary>The world jumped forward on your side (sleep, fast-forward): everybody follows. Time never runs backwards.</summary>
     public void JumpTime(double to) => Send(new JsonObject { ["t"] = "time_jump", ["to"] = to });
+
+    /// <summary>The session leader of your world (whose game simulates its people), null outside a world.</summary>
+    public int? LeaderId { get; private set; }
+    public bool IsLeader => LeaderId != null && LeaderId == PlayerId;
+
+    /// <summary>Session leader only: the people of the world. <paramref name="full"/> = false sends only what changed.</summary>
+    public void SendNpcState(JsonArray npcs, int tick, bool full = true) =>
+        Send(new JsonObject { ["t"] = "npc_state", ["tick"] = tick, ["full"] = full, ["npcs"] = npcs });
+
+    /// <summary>Ask the session leader's game to do something with a person.</summary>
+    public void SendNpcAction(string? npc, string action, JsonNode? data = null) =>
+        Send(new JsonObject { ["t"] = "npc_act", ["npc"] = npc, ["action"] = action, ["data"] = data?.DeepClone() });
 
     public void DeleteState(string key) => Send(new JsonObject { ["t"] = "state_del", ["key"] = key });
 
@@ -296,6 +308,19 @@ public sealed partial class CoopClient : IDisposable
             case "time":
                 _events.Enqueue(new TimeSync(Dbl(m["seconds"]), Dbl(m["rate"]), Bool(m["paused"]),
                     (m["reasons"] as JsonArray)?.Select(n => Str(n)).ToList() ?? new List<string>(), Bool(m["jump"])));
+                break;
+            case "leader":
+                LeaderId = m["id"] is JsonValue ? Int(m["id"]) : null;
+                _events.Enqueue(new LeaderChanged(Str(m["world"]), LeaderId, m["name"] is JsonValue ? Str(m["name"]) : null, Bool(m["handover"])));
+                break;
+            case "npc_state":
+                _events.Enqueue(new NpcSnapshot(Int(m["from"]), Int(m["tick"]), Bool(m["full"]), (m["npcs"] as JsonArray)?.DeepClone() as JsonArray ?? new JsonArray()));
+                break;
+            case "npc_act":
+                _events.Enqueue(new NpcAction(Int(m["from"]), m["npc"] is JsonValue ? Str(m["npc"]) : null, Str(m["action"]), m["data"]?.DeepClone()));
+                break;
+            case "npc_reject":
+                _events.Enqueue(new NpcRefused(Str(m["reason"])));
                 break;
             case "time_reject":
                 _events.Enqueue(new TimeRefused(Str(m["reason"])));

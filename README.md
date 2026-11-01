@@ -4,7 +4,8 @@ A BepInEx plugin that adds **Multiplayer** to Nivalis Nights: a server list in t
 shared world (or creating one), an in-game chat, and shared money, conversations and time. The server lives in the
 `nivalis-coop-server` repository.
 
-What is shared on a server: the world save, money (one account for all), businesses, conversations (everybody sees
+What is shared on a server: the world save, money (one account for all), businesses, placed furniture, the people
+(see below), the other players as figures, conversations (everybody sees
 the same one and votes on the answer; a disagreement is drawn at random after 5 s) and the world clock (a
 conversation pauses time for everybody). Inventories stay per player.
 
@@ -29,8 +30,12 @@ On Linux with Proton set the launch option `WINEDLLOVERRIDES="winhttp=n,b" %comm
 
 Settings are in `BepInEx/config/dev.katte.nivaliscoop.cfg` (server address, password, name, keys, money sync).
 
-The server's world is kept as its own save; the plugin writes a `COOP_<world>.sav` and the game's autosaves of a
-server world appear in the normal save folder, so do not continue them from the title screen's "Fortsetzen".
+A server world is never saved into your normal single-player saves: the game's saves and autosaves are stopped
+while you are in one, and the session leader's game stores the world on the server instead. The temporary
+`COOP_<world>.sav` the transfer needs is removed again right away.
+
+People (customers, staff, NPCs) are simulated by one game per world, the session leader: the first player in the
+world, and when they leave, the next one, by itself. The other games show the people where the leader has them.
 
 ## Build
 
