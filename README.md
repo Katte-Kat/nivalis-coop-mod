@@ -9,6 +9,12 @@ What is shared on a server: the world save, money (one account for all), busines
 the same one and votes on the answer; a disagreement is drawn at random after 5 s) and the world clock (a
 conversation pauses time for everybody). Inventories stay per player.
 
+## Download
+
+Take `NivalisCoop-<version>.zip` from the [Releases](https://github.com/Katte-Kat/nivalis-coop-mod/releases) page.
+It holds `BepInEx/plugins/NivalisCoop/NivalisCoop.dll` and `NivalisCoop.Net.dll`; the same zip works on Windows and
+on Linux (Proton). BepInEx itself is not inside, get it from its official release page (step 1 below).
+
 ## Install (players)
 
 1. Install **BepInEx 6.0.0-pre.2, IL2CPP, win-x64** into the game folder (download it from the official BepInEx
@@ -17,6 +23,10 @@ conversation pauses time for everybody). Inventories stay per player.
    `BepInEx/plugins/NivalisCoop/NivalisCoop.dll` and `NivalisCoop.Net.dll`.
 3. Start the game. In the main menu choose **Multiplayer**, add the server address (`host:27800`), name and password.
    F8 opens the same window in game.
+
+On Windows the game folder is usually `C:\Program Files (x86)\Steam\steamapps\common\Nivalis Nights`
+(Steam: right click the game > Manage > Browse local files). Unzip both BepInEx and the mod so that `BepInEx` sits
+next to `Nivalis Nights.exe`; nothing else is needed.
 
 On Linux with Proton set the launch option `WINEDLLOVERRIDES="winhttp=n,b" %command%` so the BepInEx loader is used.
 
